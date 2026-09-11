@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Gyroscope Gravity & Inertia</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:#08111f;color:#eef2ff;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;padding:16px;display:flex;justify-content:center}
+.app{width:min(900px,100%)}
+h1{margin:0 0 5px;font-size:27px}.sub{margin:0 0 14px;color:#94a3b8;font-size:13px;line-height:1.45}
+.panel{background:#111827;border:1px solid #293548;border-radius:18px;padding:14px;box-shadow:0 18px 50px #0008}
+.sim{position:relative;height:min(72vh,560px);min-height:430px;overflow:hidden;border:2px solid #334155;border-radius:14px;background-color:#0a101c;background-image:linear-gradient(#fff1 1px,transparent 1px),linear-gradient(90deg,#fff1 1px,transparent 1px);background-size:28px 28px;touch-action:none}
+.ground{position:absolute;left:0;right:0;bottom:0;height:8px;background:#64748b}
+.box{position:absolute;will-change:transform}
+.green{width:113.4px;height:113.4px;background:#22c55e;border:3px solid #15803d;border-radius:7px;z-index:2;cursor:grab;box-shadow:0 10px 25px #0007,inset 3px 3px 7px #fff5}
+.green:active{cursor:grabbing}
+.red{width:37.8px;height:37.8px;background:#ef4444;border:2px solid #b91c1c;border-radius:5px;z-index:3;pointer-events:none;box-shadow:0 7px 18px #0007,inset 3px 3px 6px #fff4}
+.box:after{content:"";position:absolute;width:27%;height:27%;left:16%;top:13%;border-radius:50%;background:#fff7;filter:blur(2px)}
+.controls{display:flex;gap:9px;align-items:center;margin-top:12px;flex-wrap:wrap}
+button{border:0;border-radius:9px;padding:11px 16px;background:#4f46e5;color:#fff;font-weight:700;font-size:14px;cursor:pointer}
+button.secondary{background:#374151}.active{background:#059669!important}
+.status{margin-left:auto;color:#94a3b8;font-size:13px}
+.status b{color:#22c55e}
+.sensitivity{display:flex;align-items:center;gap:8px;color:#94a3b8;font-size:12px;margin-top:10px}
+input{accent-color:#6366f1;width:140px}
+@media(max-width:600px){body{padding:10px}.panel{padding:10px}.sim{height:65vh;min-height:420px}.status{width:100%;margin-left:0}}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>Gyroscope Gravity & Inertia</h1>
+<p class="sub">Tilt your phone to move the green 3 cm box. The red 1 cm box reacts with inertia, gravity and collisions. You can also drag the green box.</p>
+<div class="panel">
+<div class="sim" id="sim">
+<div class="ground"></div>
+<div class="box green" id="green"></div>
+<div class="box red" id="red"></div>
+</div>
+<div class="controls">
+<button id="sensor">Enable Gyroscope</button>
+<button class="secondary" id="reset">Reset</button>
+<div class="status">Sensor: <b id="sensorStatus">Off</b></div>
+</div>
+<div class="sensitivity">
+<label for="sens">Sensitivity</label>
+<input id="sens" type="range" min=".3" max="2.5" step=".1" value="1">
+<span id="sensVal">1.0×</span>
+</div>
+</div>
+</div>
+<script>
+const sim=document.getElementById("sim"),G=document.getElementById("green"),R=document.getElementById("red");
+const sensorBtn=document.getElementById("sensor"),resetBtn=document.getElementById("reset");
+const sensorStatus=document.getElementById("sensorStatus"),sens=document.getElementById("sens"),sensVal=document.getElementById("sensVal");
+const GS=113.3858,RS=37.7953,GCONST=1800;
+let green,red,drag=false,ox=0,oy=0,last=performance.now();
+let sensorOn=false,ax=0,ay=0,gravityX=0,gravityY=0;
+
+function B(){return{w:sim.clientWidth,h:sim.clientHeight-8}}
+function init(){let b=B();green={x:b.w/2-GS/2,y:b.h-GS,vx:0,vy:0};red={x:green.x+GS/2-RS/2,y:green.y-RS,vx:0,vy:0};render()}
+function render(){G.style.transform=`translate3d(${green.x}px,${green.y}px,0)`;R.style.transform=`translate3d(${red.x}px,${red.y}px,0)`}
+function overlap(){return red.x+RS>green.x&&red.x<green.x+GS}
+function physics(dt){
+ let b=B();
+ if(!drag){
+   if(sensorOn){
+     const s=+sens.value;
+     green.vx+=ax*900*s*dt; green.vy+=ay*900*s*dt;
+   }
+   green.vx*=Math.pow(.025,dt);green.vy*=Math.pow(.025,dt);
+   green.x+=green.vx*dt;green.y+=green.vy*dt;
+   if(green.x<0){green.x=0;green.vx=0} if(green.x+GS>b.w){green.x=b.w-GS;green.vx=0}
+   if(green.y<0){green.y=0;green.vy=0} if(green.y+GS>b.h){green.y=b.h-GS;green.vy=0}
+   red.vy+=GCONST*dt;red.x+=red.vx*dt;red.y+=red.vy*dt;
+ }
+ if(overlap()&&red.y+RS>=green.y&&red.y<green.y+GS&&red.vy>=0){
+   red.y=green.y-RS;red.vy=-red.vy*.16;red.vx+=(green.vx-red.vx)*.25;
+   if(Math.abs(red.vy)<35)red.vy=0;
+ }
+ if(red.y+RS>b.h){red.y=b.h-RS;red.vy=-red.vy*.22;red.vx*=.9;if(Math.abs(red.vy)<30)red.vy=0}
+ if(red.x<0){red.x=0;red.vx=Math.abs(red.vx)*.2}
+ if(red.x+RS>b.w){red.x=b.w-RS;red.vx=-Math.abs(red.vx)*.2}
+ if(red.y<0){red.y=0;red.vy=Math.abs(red.vy)*.2}
+ render()
+}
+function loop(t){let dt=Math.min((t-last)/1000,.033);last=t;physics(dt);requestAnimationFrame(loop)}
+
+G.addEventListener("pointerdown",e=>{
+ drag=true;G.setPointerCapture(e.pointerId);let r=sim.getBoundingClientRect();
+ ox=e.clientX-r.left-green.x;oy=e.clientY-r.top-green.y;green.vx=green.vy=0
+});
+G.addEventListener("pointermove",e=>{
+ if(!drag)return;let r=sim.getBoundingClientRect(),b=B(),nx=Math.max(0,Math.min(b.w-GS,e.clientX-r.left-ox)),ny=Math.max(0,Math.min(b.h-GS,e.clientY-r.top-oy));
+ let dt=Math.max(.008,(performance.now()-last)/1000),oldx=green.x,oldy=green.y;
+ green.vx=(nx-oldx)/dt;green.vy=(ny-oldy)/dt;green.x=nx;green.y=ny;
+ if(Math.abs(red.y+RS-green.y)<6&&overlap()&&red.vy>=-30){red.x+=nx-oldx;red.vx=green.vx}
+ render()
+});
+function release(e){drag=false;try{G.releasePointerCapture(e.pointerId)}catch{}}
+G.addEventListener("pointerup",release);G.addEventListener("pointercancel",release);
+
+function handleOrientation(e){
+ // gamma: left/right tilt, beta: front/back tilt
+ let gx=Math.max(-1,Math.min(1,(e.gamma||0)/35));
+ let gy=Math.max(-1,Math.min(1,(e.beta||0)/35));
+ // Low-pass filtering prevents jitter
+ ax=ax*.82+gx*.18;ay=ay*.82+gy*.18;
+}
+async function enableSensor(){
+ try{
+   if(typeof DeviceOrientationEvent==="undefined"){alert("This browser does not provide device orientation.");return}
+   if(typeof DeviceOrientationEvent.requestPermission==="function"){
+     const p=await DeviceOrientationEvent.requestPermission();
+     if(p!=="granted"){sensorStatus.textContent="Denied";return}
+   }
+   window.addEventListener("deviceorientation",handleOrientation,true);
+   sensorOn=true;sensorBtn.textContent="Gyroscope Enabled";sensorBtn.classList.add("active");sensorStatus.textContent="On";
+ }catch(err){alert("Sensor permission could not be enabled. Open this file through HTTPS or a supported mobile browser.");}
+}
+sensorBtn.addEventListener("click",enableSensor);
+sens.addEventListener("input",()=>sensVal.textContent=Number(sens.value).toFixed(1)+"×");
+resetBtn.addEventListener("click",()=>{init();ax=ay=0;last=performance.now()});
+window.addEventListener("resize",()=>{let b=B();green.x=Math.max(0,Math.min(b.w-GS,green.x));green.y=Math.max(0,Math.min(b.h-GS,green.y));render()});
+init();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
